@@ -1,0 +1,84 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# =========================
+# Virtual environment
+# =========================
+venv/
+.venv/
+env/
+ENV/
+
+# =========================
+# PyCharm
+# =========================
+.idea/
+*.iml
+
+# =========================
+# Model files (VERY IMPORTANT)
+# =========================
+saved_model/
+saved_modelT/
+results/
+checkpoints/
+*.pt
+*.pth
+*.bin
+
+# =========================
+# HuggingFace / Transformers cache
+# =========================
+.cache/
+huggingface/
+transformers/
+
+# =========================
+# Dataset
+# =========================
+*.csv
+*.tsv
+*.json
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Environment variables
+# =========================
+.env
+
+# =========================
+# Build files
+# =========================
+dist/
+build/
+*.egg-info/
+
+# =========================
+# LIME temporary files
+# =========================
+*.lime
+
+# Private files
+testModel.py
+PureBERT.py
+phishing_email.csv
+main2.py
