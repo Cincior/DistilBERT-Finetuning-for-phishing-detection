@@ -4,6 +4,7 @@ import numpy as np
 from collections import Counter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import re
 
 df = pd.read_csv('phishing_email.csv')
 
@@ -21,7 +22,22 @@ plt.show()
 print('Empty mails: ', df['EmailText'].isna().sum())
 print('Empty labels: ', df['EmailLabel'].isna().sum())
 
-df['EmailText'] = df['EmailText'].str.strip()
+def get_top_words(text_series, n=20):
+    words = " ".join(text_series.astype(str)).lower().split()
+    return Counter(words).most_common(n)
+
+
+print("Top słowa w Phishingu:", get_top_words(df[df['EmailLabel'] == 1]['EmailText']))
+print("Top słowa w Legit:", get_top_words(df[df['EmailLabel'] == 0]['EmailText']))
+
+# --- CZYSZCZENIE ---
+df.dropna(subset=['EmailText', 'EmailLabel'], inplace=True)
+df['EmailLabel'] = df['EmailLabel'].astype(int)
+df['EmailText'] = df['EmailText'].astype(str).str.strip()
+df['EmailText'] = df['EmailText'].apply(lambda x: re.sub(r'_+', ' ', x))
+df['EmailText'] = df['EmailText'].apply(lambda x: re.sub(r'\s+', ' ', x))
+df.drop_duplicates(subset=['EmailText'], inplace=True)
+
 print('Duplikaty maili: ', df['EmailText'].duplicated().sum())
 
 print("Max długość maila:", df['EmailText'].str.len().max())
@@ -36,23 +52,12 @@ print("Średnio o ile przekraczają 512:", over_limit.mean())
 print("Maksymalne przekroczenie:", over_limit.max())
 print("Minimalne przekroczenie:", over_limit.min())
 
-
-def get_top_words(text_series, n=20):
-    words = " ".join(text_series.astype(str)).lower().split()
-    return Counter(words).most_common(n)
-
-
-print("Top słowa w Phishingu:", get_top_words(df[df['EmailLabel'] == 1]['EmailText']))
-print("Top słowa w Legit:", get_top_words(df[df['EmailLabel'] == 0]['EmailText']))
-
 vectorizer = TfidfVectorizer(max_features=5000)
 tfidf_matrix = vectorizer.fit_transform(df['EmailText'])
 
 batch_size = 2000
 num_rows = tfidf_matrix.shape[0]
 indices_to_drop = set()
-displayed_count = 0
-max_examples = 80000
 
 for i in range(0, num_rows, batch_size):
     end_i = min(i + batch_size, num_rows)
@@ -60,28 +65,16 @@ for i in range(0, num_rows, batch_size):
 
     sim_matrix = cosine_similarity(chunk, tfidf_matrix)
 
-    rows, cols = np.where((sim_matrix > 0.9) & (sim_matrix < 0.99))
+    rows, cols = np.where(sim_matrix > 0.9)
 
     for r, c in zip(rows, cols):
         actual_r = r + i
         if actual_r < c:
             indices_to_drop.add(c)
-            displayed_count += 1
-            similarity_score = sim_matrix[r, c]
 
-            # print(f"\nPara nr {displayed_count} | Podobieństwo: {similarity_score:.4f}")
-            # print(f"Indeks {actual_r} (Zostaje): {df.iloc[actual_r]['EmailText']}")
-            # print(f"Indeks {c} (Do usunięcia): {df.iloc[c]['EmailText']}")
-            # print("-" * 50)
-            if displayed_count >= max_examples:
-                break
-    if displayed_count >= max_examples:
-        break
-
-print(f"Gotowe. Masz {len(indices_to_drop)} indeksów do wywalenia.")
+print(f"Gotowe. Masz {len(indices_to_drop)} indeksów do usuniecia.")
 
 df.drop(index=df.index[list(indices_to_drop)], inplace=True)
-df.drop_duplicates(subset=['EmailText'], inplace=True)
 df.dropna(subset=['EmailText', 'EmailLabel'], inplace=True)
 
 print("\n--- STAN KOŃCOWY ---")
@@ -94,3 +87,6 @@ print("Top słowa w Phishing: po czyszceniu", get_top_words(df[df['EmailLabel'] 
 df['EmailLabel'].value_counts().plot(kind='bar', color=['skyblue', 'salmon'])
 plt.title('Rozkład klas po czyszczeniu i deduplikacji')
 plt.show()
+
+multiple_spaces = df['EmailText'].str.contains(r'\s{2,}', regex=True)
+print("Liczba maili z więcej niż jedną spacją obok siebie:", multiple_spaces.sum())
