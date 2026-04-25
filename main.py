@@ -169,7 +169,7 @@ else:
     plt.tight_layout()
     plt.savefig('confusion_matrix.png')
 
-    plot_all_metrics(metrics_callback.epoch_metrics)
+    plot_all_metrics(metrics_callback)
 
     model.save_pretrained(save_path)
     tokenizer.save_pretrained(save_path)
@@ -214,13 +214,24 @@ def get_suspicious_fragments(text, lime_words):
     return fragments
 
 
+def predict_proba_raw(texts):
+    cleaned_texts = [clean_email(t) for t in texts]
+    return predict_proba(cleaned_texts)
+
+
 def explain_prediction(text):
-    cleaned = clean_email(text)
-    probs = predict_proba([cleaned])[0]
+    probs = predict_proba_raw([text])[0]
     print("\n" + "=" * 30)
     print("TEXT:", text[:100], "...")
     print(f"Normal: {round(probs[0] * 100, 2)}% | Phishing: {round(probs[1] * 100, 2)}%")
-    exp = explainer.explain_instance(cleaned, predict_proba, num_features=5, num_samples=500)
+
+    exp = explainer.explain_instance(
+        text,
+        predict_proba_raw,
+        num_features=5,
+        num_samples=500
+    )
+
     suspicious_words = [(word, score) for word, score in exp.as_list() if score > 0]
     print("\nSuspicious words:")
     if not suspicious_words:
@@ -228,7 +239,6 @@ def explain_prediction(text):
     else:
         for word, score in suspicious_words:
             print(f"[ {word} ] -> {round(score, 3)}")
-
 # =========================
 # TEST
 # =========================

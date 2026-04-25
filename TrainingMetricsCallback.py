@@ -9,7 +9,7 @@ class TrainingMetricsCallback(TrainerCallback):
 
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs and "loss" in logs:
-            if state.global_step % 1000 == 0:
+            if state.global_step % 100 == 0:
                 self.step_losses.append({
                     "step": state.global_step,
                     "loss": logs["loss"]
