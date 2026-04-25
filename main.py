@@ -13,7 +13,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 import pandas as pd
-from EpochMetricsCallback import *
+from TrainingMetricsCallback import *
 
 model_name = "distilbert-base-uncased"
 save_path = "./saved_modelT"
@@ -136,7 +136,7 @@ else:
         seed=SEED
     )
 
-    metrics_callback = EpochMetricsCallback()
+    metrics_callback = TrainingMetricsCallback()
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -169,7 +169,7 @@ else:
     plt.tight_layout()
     plt.savefig('confusion_matrix.png')
 
-    plot_epoch_metrics(metrics_callback.epoch_metrics)
+    plot_all_metrics(metrics_callback.epoch_metrics)
 
     model.save_pretrained(save_path)
     tokenizer.save_pretrained(save_path)
