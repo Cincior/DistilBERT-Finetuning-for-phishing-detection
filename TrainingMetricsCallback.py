@@ -6,6 +6,7 @@ class TrainingMetricsCallback(TrainerCallback):
     def __init__(self):
         self.epoch_metrics = []
         self.step_losses = []
+        self.training_finished = False
 
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs and "loss" in logs:
@@ -15,8 +16,14 @@ class TrainingMetricsCallback(TrainerCallback):
                     "loss": logs["loss"]
                 })
 
+    def on_train_end(self, args, state, control, **kwargs):
+        self.training_finished = True
+
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
-        if metrics is not None:
+        if metrics is not None and not self.training_finished:
+            epoch_key = round(state.epoch)
+            if any(round(m["epoch"]) == epoch_key for m in self.epoch_metrics):
+                return
             self.epoch_metrics.append({
                 "epoch": state.epoch,
                 "val_loss": metrics.get("eval_loss", None),
@@ -42,7 +49,7 @@ def plot_all_metrics(metrics_callback):
     recall = [m["recall"] for m in epoch_data]
 
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
-    fig.suptitle("Metryki: Loss (co 100 kroków) vs Metryki (co epokę)", fontsize=14)
+    fig.suptitle("Metryki w czasie trenowania modelu", fontsize=14)
 
     def _plot(ax, x, y, label, color, x_label="Epoka"):
         ax.plot(x, y, marker="o", color=color, linewidth=2)
