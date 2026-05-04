@@ -6,8 +6,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import re
 
-df = pd.read_csv('phishing_email.csv')
-
+df = pd.read_csv('phishingEmail.csv')
+df.rename(columns={"Email Text": "EmailText", "Email Type": "EmailLabel"}, inplace=True)
 # print(df.info())
 
 print("Ilościowo:\n", df['EmailLabel'].value_counts())
@@ -21,6 +21,22 @@ plt.show()
 
 print('Empty mails: ', df['EmailText'].isna().sum())
 print('Empty labels: ', df['EmailLabel'].isna().sum())
+
+joined_links = df['EmailText'].str.contains(
+    r'\b(?:http|https|www)\w+\b',
+    regex=True,
+    na=False
+).sum()
+
+print("Złączone linki:", joined_links)
+
+separated_links = df['EmailText'].str.contains(
+    r'\b(?:http|https|www)\b(?:\s+\w+)+',
+    regex=True,
+    na=False
+).sum()
+
+print("Rozdzielone spacjami:", separated_links)
 
 
 def get_top_words(text_series, n=20):

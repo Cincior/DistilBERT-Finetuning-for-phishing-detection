@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import seaborn as sns
 from transformers import AutoTokenizer, Trainer, TrainingArguments, AutoModelForSequenceClassification
 from datasets import load_dataset, Dataset
@@ -8,11 +7,10 @@ import os
 import numpy as np
 from lime.lime_text import LimeTextExplainer
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.model_selection import train_test_split as sklearn_train_test_split
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
-import pandas as pd
 from TrainingMetricsCallback import *
 
 model_name = "distilbert-base-uncased"
@@ -34,32 +32,21 @@ def compute_metrics(eval_pred):
 
 def clean_email(text):
     text = text.lower()
-    text = re.sub(r'[^a-z0-9\s]', '', text)
-    words = text.split()
-    cleaned_words = [w for w in words if w not in ENGLISH_STOP_WORDS]
-    result = " ".join(cleaned_words)
-    return re.sub(r'\s+', ' ', result).strip()
+    text = re.sub(r'\b(http|https|www)\S+', 'httpurl', text)
+    text = re.sub(r'[^a-z0-9\s]', ' ', text)
+    return re.sub(r'\s+', ' ', text).strip()
 
 
-def apply_sliding_window(dataset_split, tokenizer_p):
-    new_data = []
-    for example in dataset_split:
-        tokenized = tokenizer_p(
+def tokenize_dataset(df_a):
+    def tokenize(example):
+        return tokenizer(
             example["EmailText"],
             truncation=True,
             padding="max_length",
-            max_length=512,
-            stride=64,
-            return_overflowing_tokens=True
+            max_length=512
         )
-        num_chunks = len(tokenized["input_ids"])
-        for i in range(num_chunks):
-            new_data.append({
-                "input_ids": tokenized["input_ids"][i],
-                "attention_mask": tokenized["attention_mask"][i],
-                "labels": int(example["EmailLabel"])
-            })
-    return Dataset.from_list(new_data)
+    ds = Dataset.from_pandas(df_a[["EmailText", "EmailLabel"]].rename(columns={"EmailLabel": "label"}))
+    return ds.map(tokenize, batched=True)
 
 
 if os.path.exists(save_path):
@@ -101,31 +88,44 @@ else:
 
     df.drop(index=list(indices_to_drop), inplace=True)
     df.dropna(subset=["EmailText", "EmailLabel"], inplace=True)
-    df["EmailText"] = df["EmailText"].apply(clean_email)
+    df.reset_index(drop=True, inplace=True)
+
+    train_idx, temp_idx = sklearn_train_test_split(
+        df.index,
+        test_size=0.2,
+        stratify=df["EmailLabel"],
+        random_state=SEED
+    )
+    val_idx, test_idx = sklearn_train_test_split(
+        temp_idx,
+        test_size=0.5,
+        stratify=df["EmailLabel"].iloc[temp_idx],
+        random_state=SEED
+    )
+
+    df_train = df.loc[train_idx].copy().reset_index(drop=True)
+    df_val = df.loc[val_idx].copy().reset_index(drop=True)
+    df_test = df.loc[test_idx].copy().reset_index(drop=True)
+
+    df_train["EmailText"] = df_train["EmailText"].apply(clean_email)
+    df_val["EmailText"] = df_val["EmailText"].apply(clean_email)
+    df_test["EmailText"] = df_test["EmailText"].apply(clean_email)
 
     print("Po czyszczeniu:")
-    print(df["EmailLabel"].value_counts())
+    print("Train:", df_train["EmailLabel"].value_counts().to_dict())
+    print("Val:", df_val["EmailLabel"].value_counts().to_dict())
+    print("Test:", df_test["EmailLabel"].value_counts().to_dict())
 
-    dataset = Dataset.from_pandas(df, preserve_index=False)
-    train_test_split = dataset.train_test_split(test_size=0.2, shuffle=True, seed=SEED)
-    test_valid_split = train_test_split["test"].train_test_split(test_size=0.5, shuffle=True, seed=SEED)
-
-    train_ds = apply_sliding_window(train_test_split["train"], tokenizer)
-    val_ds = apply_sliding_window(test_valid_split["train"], tokenizer)
-    test_ds = apply_sliding_window(test_valid_split["test"], tokenizer)
-
-    train_labels = pd.Series([x["labels"] for x in train_ds])
-    val_labels = pd.Series([x["labels"] for x in val_ds])
-    test_labels = pd.Series([x["labels"] for x in test_ds])
-    print("\n=== CLASS BALANCE PO SLIDING WINDOW ===")
-    print("Train:\n", train_labels.value_counts())
-    print("Val:\n", val_labels.value_counts())
-    print("Test:\n", test_labels.value_counts())
+    train_ds = tokenize_dataset(df_train)
+    val_ds = tokenize_dataset(df_val)
+    test_ds = tokenize_dataset(df_test)
 
     training_args = TrainingArguments(
         output_dir="./results",
         num_train_epochs=4,
         per_device_train_batch_size=16,
+        learning_rate=2e-5,
+        weight_decay=0.01,
         logging_steps=10,
         save_total_limit=1,
         eval_strategy="epoch",
@@ -190,14 +190,12 @@ def predict_proba(texts):
         )
         inputs = {k: v.to(device) for k, v in inputs.items() if k != "overflow_to_sample_mapping"}
         with torch.no_grad():
+            model.eval()
             outputs = model(**inputs)
         probs = F.softmax(outputs.logits, dim=1).cpu().numpy()
         avg_probs = np.mean(probs, axis=0)
         all_probs.append(avg_probs)
     return np.array(all_probs)
-
-
-explainer = LimeTextExplainer(class_names=["normal", "phishing"])
 
 
 def get_suspicious_fragments(text, lime_words):
@@ -217,6 +215,9 @@ def get_suspicious_fragments(text, lime_words):
 def predict_proba_raw(texts):
     cleaned_texts = [clean_email(t) for t in texts]
     return predict_proba(cleaned_texts)
+
+
+explainer = LimeTextExplainer(class_names=["normal", "phishing"])
 
 
 def explain_prediction(text):
@@ -239,9 +240,8 @@ def explain_prediction(text):
     else:
         for word, score in suspicious_words:
             print(f"[ {word} ] -> {round(score, 3)}")
-# =========================
-# TEST
-# =========================
+
+
 explain_prediction(
     "Dear Customer enron,    We detected an unusual sign-in attempt on your account from a new device and "
     "location. For your security, your account has been temporarily limited. Please confirm your "
