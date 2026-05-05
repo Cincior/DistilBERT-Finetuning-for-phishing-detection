@@ -78,7 +78,7 @@ build/
 *.lime
 
 # Private files
-testModel.py
-PureBERT.py
+v0-1/testModel.py
+v0-1/PureBERT.py
 phishing_email.csv
-main2.py
+v0-1/main2.py
